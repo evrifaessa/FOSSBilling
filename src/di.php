@@ -35,6 +35,19 @@ $di['config'] = function () {
     return $array;
 };
 
+$di['debugbar'] = function () use ($di) {
+    $debugbar = new \DebugBar\StandardDebugBar();
+    
+    // Configuration collector
+    $config = $di['config'];
+    $config['salt'] = '********';
+    $config['db'] = array_fill_keys(array_keys($config['db']), '********');
+
+    $debugbar->addCollector(new \DebugBar\DataCollector\ConfigCollector($config));
+
+    return $debugbar;
+};
+
 /*
  * Create a new logger instance and configures it based on the settings in the configuration file.
  *
@@ -308,7 +321,7 @@ $di['twig'] = $di->factory(function () use ($di) {
     // $twig->addExtension(new OptimizerExtension());
     $twig->addExtension(new StringLoaderExtension());
     $twig->addExtension(new DebugExtension());
-    $twig->addExtension(new \FOSSBilling\TwigExtensions\DebugBar());
+    $twig->addExtension(new \FOSSBilling\TwigExtensions\DebugBar($di));
     $twig->addExtension(new TranslationExtension());
     $twig->addExtension($box_extensions);
     $twig->getExtension(CoreExtension::class)->setTimezone($timezone);

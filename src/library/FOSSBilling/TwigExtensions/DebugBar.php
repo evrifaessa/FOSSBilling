@@ -10,13 +10,31 @@
 namespace FOSSBilling\TwigExtensions;
 
 use DebugBar\JavascriptRenderer;
-use DebugBar\StandardDebugBar;
+use FOSSBilling\InjectionAwareInterface;
 use Twig\Extension\AbstractExtension;
 use Twig\TwigFunction;
 
-class DebugBar extends AbstractExtension
+class DebugBar extends AbstractExtension implements InjectionAwareInterface
 {
+    protected ?\Pimple\Container $di;
     private JavascriptRenderer $debugbarRenderer;
+
+    public function __construct(\Pimple\Container $di)
+    {
+        $this->di = $di;
+
+        $this->debugbarRenderer = $di['debugbar']->getJavascriptRenderer();
+    }
+
+    public function setDi(\Pimple\Container $di): void
+    {
+        $this->di = $di;
+    }
+
+    public function getDi(): ?\Pimple\Container
+    {
+        return $this->di;
+    }
 
     public function getFunctions(): array
     {
@@ -26,12 +44,6 @@ class DebugBar extends AbstractExtension
         ];
     }
 
-    public function __construct()
-    {
-        $debugbar = new StandardDebugBar();
-        $this->debugbarRenderer = $debugbar->getJavascriptRenderer();
-    }
-
     public function getName(): string
     {
         return 'DebugBar';
@@ -39,11 +51,19 @@ class DebugBar extends AbstractExtension
 
     public function renderHead(): string
     {
-        return $this->debugbarRenderer->renderHead();
+        if (1 === 1) { // Environment::isDevelopment() once it's merged
+            return $this->debugbarRenderer->renderHead();
+        } else {
+            return '';
+        } 
     }
 
     public function render(): string
     {
-        return $this->debugbarRenderer->render();
+        if (1 === 1) { // Environment::isDevelopment() once it's merged
+            return $this->debugbarRenderer->render();
+        } else {
+            return '';
+        }
     }
 }

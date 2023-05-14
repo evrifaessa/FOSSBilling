@@ -21,6 +21,8 @@
     <script src="{{ "Api/API.js?v=#{guest.system_version}" | library_url }}"></script>
     {{ encore_entry_script_tags('fossbilling') }}
 
+    {{ DebugBar_renderHead() }}
+
     {% block head %}{% endblock %}
 </head>
 
@@ -232,5 +234,6 @@
         <div class="msg error">NOTE: Many features on FOSSBilling require Javascript and cookies. You can enable both via your browser's preference settings.</div>
     </noscript>
     {% endif %}
+    {{ DebugBar_render() }}
 </body>
 </html>
