@@ -11,6 +11,8 @@
 
     {% include "partial_bb_meta.html.twig" %}
 
+    {{ DebugBar_renderHead() }}
+
     {{ encore_entry_link_tags('fossbilling') }}
     <script src="{{ "Api/API.js?v=#{guest.system_version}" | library_url }}"></script>
     {{ encore_entry_script_tags('fossbilling') }}
@@ -23,5 +25,7 @@
     <div class="d-none">
         {% include '../build/symbol/icons-sprite.svg' %}
     </div>
+
+    {{ DebugBar_render() }}
 </body>
 </html>

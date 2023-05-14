@@ -40,6 +40,8 @@ $di['debugbar'] = function () use ($di) {
     
     // Configuration collector
     $config = $di['config'];
+
+    // Hide sensitive information
     $config['salt'] = '********';
     $config['db'] = array_fill_keys(array_keys($config['db']), '********');
 

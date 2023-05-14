@@ -35,11 +35,15 @@
     <script src="{{ 'js/bootstrap/bootstrap.min.js' | asset_url}}"></script>
     <script src="{{ 'js/plugins/jGrowl/jquery.jgrowl.js' | asset_url }}"></script>
 
+    {{ DebugBar_renderHead() }}
+
     {% block head %}{% endblock %}
     {% block js %}{% endblock %}
 </head>
 <body>
     {% block body %}{% endblock %}
     {% include 'partial_pending_messages.html.twig' ignore missing %}
+
+    {{ DebugBar_render() }}
 </body>
 </html>
