@@ -308,6 +308,7 @@ $di['twig'] = $di->factory(function () use ($di) {
     // $twig->addExtension(new OptimizerExtension());
     $twig->addExtension(new StringLoaderExtension());
     $twig->addExtension(new DebugExtension());
+    $twig->addExtension(new \FOSSBilling\TwigExtensions\DebugBar());
     $twig->addExtension(new TranslationExtension());
     $twig->addExtension($box_extensions);
     $twig->getExtension(CoreExtension::class)->setTimezone($timezone);
