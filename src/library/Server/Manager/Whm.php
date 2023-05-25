@@ -45,6 +45,22 @@ class Server_Manager_Whm extends Server_Manager
         $host = $this->_config['host'];
         return 'http://'.$host.'/whm';
     }
+
+    public function listAccounts(): array
+    {
+        $json = $this->_request('listaccts');
+        $accounts = array();
+        
+        foreach($json->acct as $acc) {
+            $accounts[] = [
+                'email' => $acc->email,
+                'username' => $acc->user,
+                'domain' => $acc->domain,
+                'status' => $acc->suspended ? \Model_ClientOrder::STATUS_SUSPENDED : \Model_ClientOrder::STATUS_ACTIVE,
+            ];
+        }
+        return $accounts;
+    }
     
     public static function getForm()
     {
@@ -213,7 +229,7 @@ class Server_Manager_Whm extends Server_Manager
 		$var_hash = array(
 			'user'              => $a->getUsername(),
 			'pass'              => $new,
-			'db_pass_update'	=> false,
+			'db_pass_update'	=> true,
 		);
 
 		$result = $this->_request($action, $var_hash);
