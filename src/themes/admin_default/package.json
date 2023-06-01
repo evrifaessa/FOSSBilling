@@ -20,6 +20,7 @@
     "imask": "^6.6.1",
     "jquery": "^3.7.0",
     "litepicker": "^2.0.12",
+    "ninja-keys": "^1.2.2",
     "select2": "^4.0.13",
     "tom-select": "^2.2.2"
   }

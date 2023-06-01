@@ -9,6 +9,7 @@ import ClipboardJS from "clipboard";
 import '@tabler/core/src/js/tabler';
 import './js/tomselect'
 import './js/datepicker'
+import './js/cmdk'
 import ApexCharts from 'apexcharts';
 import './js/ui/theme_settings';
 import './js/fossbilling';
