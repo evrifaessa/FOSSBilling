@@ -11,6 +11,8 @@
 
 namespace FOSSBilling;
 
+use Symfony\Component\Filesystem\Path;
+
 /**
  * The base FOSSBilling exception class. Implements translation and stacktrace logging.
  */
@@ -29,9 +31,10 @@ class Exception extends \Exception
         $logStack = Config::getProperty('debug_and_monitoring.log_stacktrace', true);
         $stackLength = Config::getProperty('debug_and_monitoring.stacktrace_length', 25);
 
-        if (DEBUG && $logStack) {
-            error_log('An exception has been thrown. Stacktrace:');
-            error_log($this->stackTrace($stackLength, $protected));
+        // Attempt to prepend module name
+        $moduleName = $this->detectModuleFromStacktrace();
+        if ($moduleName !== null) {
+            $message = "[Module: {$moduleName}] " . $message;
         }
 
         // Translate the exception
@@ -41,8 +44,43 @@ class Exception extends \Exception
             $message = strtr($message, $variables);
         }
 
-        // Pass the message to the parent
+        // Log stack trace if enabled
+        if (DEBUG && $logStack) {
+            error_log('An exception has been thrown. Stacktrace:');
+            error_log($this->stackTrace($stackLength, $protected));
+        }
+
         parent::__construct($message, $code);
+    }
+
+    /**
+     * Detects the module name from the debug backtrace.
+     *
+     * @return string|null
+     */
+    private function detectModuleFromStacktrace(): ?string
+    {
+        $stack = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS);
+        foreach ($stack as $entry) {
+            if (!isset($entry['file'])) {
+                continue;
+            }
+
+            $realPath = realpath($entry['file']);
+            if (!$realPath) {
+                continue;
+            }
+
+            // Normalize with Symfony
+            $normalizedPath = Path::normalize($realPath);
+
+            // Look for "modules/{moduleName}/" in path
+            if (preg_match('~[\\/\\\\]modules[\\/\\\\]([^\\/\\\\]+)[\\/\\\\]~', $normalizedPath, $matches)) {
+                return $matches[1];
+            }
+        }
+
+        return null;
     }
 
     /**
