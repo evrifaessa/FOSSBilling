@@ -1,4 +1,4 @@
-FROM php:8.5-apache@sha256:29e2adeb12afa8f76bdb79c580380d4f87511ef33116d5966503393853659dcb
+FROM php:8.5-apache@sha256:9be84c47f2791d429a3fd82beee8109be123feb093e6c428269aa311ef1d3190
 
 # Install required packages, configure Apache, install PHP extensions, and clean-up.
 RUN apt-get update \
@@ -23,5 +23,5 @@ RUN echo '*/5 * * * * /usr/local/bin/php /var/www/html/cron.php' > /tmp/www-data
   && crontab -u www-data /tmp/www-data.cron \
   && rm /tmp/www-data.cron
 
-# Start cron and then run Apache in the foreground when the container starts.
-CMD cron && apache2-foreground
+# Start cron in the background and then run Apache in the foreground when the container starts.
+CMD ["sh", "-c", "cron & exec apache2-foreground"]

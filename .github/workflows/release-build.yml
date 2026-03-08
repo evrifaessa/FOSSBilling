@@ -24,14 +24,14 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: 'PHP Build' 
-        uses: FOSSBilling/.workflows/.github/actions/php-build@74c38ad88ce24f4751e1467524124c7c2cae4e07
+        uses: FOSSBilling/.workflows/.github/actions/php-build@1c26ea34a7bf6d5380ad4e84d26954d7774a7c91
         with:
           cache-deps: 'false'
           composer-args: '--prefer-dist --no-dev --optimize-autoloader'
           php-version: 8.3
 
       - name: 'Install Node.js and Enable Caching'
-        uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6
+        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6
         with:
           cache: 'npm'
           cache-dependency-path: '**/package-lock.json'
@@ -85,7 +85,7 @@ jobs:
         run: tar -cvf /tmp/build.tar -C ./src/ ./
 
       - name: 'Upload Release Build Archive'
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
         with:
           if-no-files-found: 'error'
           name: ${{ inputs.artifact-name }}

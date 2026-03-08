@@ -177,7 +177,7 @@ class Service implements InjectionAwareInterface
         }
 
         // Sort by slot name for consistent display
-        usort($result, fn ($a, $b): int => strcmp((string) $a['slot'], (string) $b['slot']));
+        usort($result, fn ($a, $b): int => strcmp($a['slot'], $b['slot']));
 
         return $result;
     }
@@ -193,7 +193,7 @@ class Service implements InjectionAwareInterface
             $di = $event->getDi();
             $ext = $di['db']->load('extension', $params['id']);
 
-            if (is_object($ext) && $ext->type === 'mod') {
+            if (is_object($ext) && isset($ext->type) && $ext->type === 'mod') {
                 $di['mod_service']('Widgets')->invalidateCache();
             }
         }
