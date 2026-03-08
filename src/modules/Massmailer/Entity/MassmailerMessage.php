@@ -12,52 +12,50 @@ declare(strict_types=1);
 
 namespace Box\Mod\Massmailer\Entity;
 
+use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 use FOSSBilling\Interfaces\ApiArrayInterface;
+use FOSSBilling\Interfaces\TimestampInterface;
 
-/**
- * @todo The existing table uses varchar(35) columns for timestamps (sent_at, created_at, updated_at)
- *       rather than DATETIME. This entity preserves that format for backward compatibility with
- *       existing data. A future migration could convert these columns to DATETIME_MUTABLE.
- */
 #[ORM\Entity(repositoryClass: \Box\Mod\Massmailer\Repository\MassmailerMessageRepository::class)]
 #[ORM\Table(name: 'mod_massmailer')]
-class MassmailerMessage implements ApiArrayInterface
+#[ORM\HasLifecycleCallbacks]
+class MassmailerMessage implements ApiArrayInterface, TimestampInterface
 {
     public const STATUS_DRAFT = 'draft';
     public const STATUS_SENT = 'sent';
 
     #[ORM\Id]
     #[ORM\GeneratedValue]
-    #[ORM\Column(type: \Doctrine\DBAL\Types\Types::BIGINT)]
+    #[ORM\Column(type: Types::BIGINT)]
     private ?int $id = null;
 
-    #[ORM\Column(name: 'from_email', type: \Doctrine\DBAL\Types\Types::STRING, length: 255, nullable: true)]
+    #[ORM\Column(name: 'from_email', type: Types::STRING, length: 255, nullable: true)]
     private ?string $fromEmail = null;
 
-    #[ORM\Column(name: 'from_name', type: \Doctrine\DBAL\Types\Types::STRING, length: 255, nullable: true)]
+    #[ORM\Column(name: 'from_name', type: Types::STRING, length: 255, nullable: true)]
     private ?string $fromName = null;
 
-    #[ORM\Column(type: \Doctrine\DBAL\Types\Types::STRING, length: 255, nullable: true)]
+    #[ORM\Column(type: Types::STRING, length: 255, nullable: true)]
     private ?string $subject = null;
 
-    #[ORM\Column(type: \Doctrine\DBAL\Types\Types::TEXT, nullable: true)]
+    #[ORM\Column(type: Types::TEXT, nullable: true)]
     private ?string $content = null;
 
-    #[ORM\Column(type: \Doctrine\DBAL\Types\Types::TEXT, nullable: true)]
-    private ?string $filter = null;
+    #[ORM\Column(type: Types::JSON, nullable: true)]
+    private ?array $filter = null;
 
-    #[ORM\Column(type: \Doctrine\DBAL\Types\Types::STRING, length: 255, nullable: true)]
+    #[ORM\Column(type: Types::STRING, length: 255, nullable: true)]
     private ?string $status = self::STATUS_DRAFT;
 
-    #[ORM\Column(name: 'sent_at', type: \Doctrine\DBAL\Types\Types::STRING, length: 35, nullable: true)]
-    private ?string $sentAt = null;
+    #[ORM\Column(name: 'sent_at', type: Types::DATETIME_MUTABLE, nullable: true)]
+    private ?\DateTime $sentAt = null;
 
-    #[ORM\Column(name: 'created_at', type: \Doctrine\DBAL\Types\Types::STRING, length: 35, nullable: true)]
-    private ?string $createdAt = null;
+    #[ORM\Column(name: 'created_at', type: Types::DATETIME_MUTABLE)]
+    private \DateTime $createdAt;
 
-    #[ORM\Column(name: 'updated_at', type: \Doctrine\DBAL\Types\Types::STRING, length: 35, nullable: true)]
-    private ?string $updatedAt = null;
+    #[ORM\Column(name: 'updated_at', type: Types::DATETIME_MUTABLE)]
+    private \DateTime $updatedAt;
 
     public function toApiArray(): array
     {
@@ -67,12 +65,26 @@ class MassmailerMessage implements ApiArrayInterface
             'from_name' => $this->getFromName(),
             'subject' => $this->getSubject(),
             'content' => $this->getContent(),
-            'filter' => $this->getFilterDecoded(),
+            'filter' => $this->getFilter() ?? [],
             'status' => $this->getStatus(),
-            'sent_at' => $this->getSentAt(),
-            'created_at' => $this->getCreatedAt(),
-            'updated_at' => $this->getUpdatedAt(),
+            'sent_at' => $this->getSentAt()?->format('Y-m-d H:i:s'),
+            'created_at' => $this->getCreatedAt()->format('Y-m-d H:i:s'),
+            'updated_at' => $this->getUpdatedAt()->format('Y-m-d H:i:s'),
         ];
+    }
+
+    #[ORM\PrePersist]
+    public function onPrePersist(): void
+    {
+        $now = new \DateTime();
+        $this->createdAt = $now;
+        $this->updatedAt = $now;
+    }
+
+    #[ORM\PreUpdate]
+    public function updateTimestamp(): void
+    {
+        $this->updatedAt = new \DateTime();
     }
 
     // --- Getters ---
@@ -102,17 +114,9 @@ class MassmailerMessage implements ApiArrayInterface
         return $this->content;
     }
 
-    public function getFilter(): ?string
+    public function getFilter(): ?array
     {
         return $this->filter;
-    }
-
-    /**
-     * Get the filter as a decoded array.
-     */
-    public function getFilterDecoded(): array
-    {
-        return json_decode($this->filter ?? '', true) ?? [];
     }
 
     public function getStatus(): ?string
@@ -120,17 +124,17 @@ class MassmailerMessage implements ApiArrayInterface
         return $this->status;
     }
 
-    public function getSentAt(): ?string
+    public function getSentAt(): ?\DateTime
     {
         return $this->sentAt;
     }
 
-    public function getCreatedAt(): ?string
+    public function getCreatedAt(): \DateTime
     {
         return $this->createdAt;
     }
 
-    public function getUpdatedAt(): ?string
+    public function getUpdatedAt(): \DateTime
     {
         return $this->updatedAt;
     }
@@ -165,51 +169,40 @@ class MassmailerMessage implements ApiArrayInterface
         return $this;
     }
 
-    /**
-     * Set the filter from a raw JSON string.
-     */
-    public function setFilter(?string $filter): self
+    public function setFilter(?array $filter): self
     {
         $this->filter = $filter;
 
         return $this;
     }
 
-    /**
-     * Set the filter from an array (will be JSON-encoded).
-     */
-    public function setFilterFromArray(array $filter): self
-    {
-        $this->filter = json_encode($filter);
-
-        return $this;
-    }
-
     public function setStatus(?string $status): self
     {
+        $allowedStatuses = [self::STATUS_DRAFT, self::STATUS_SENT];
+
+        if ($status !== null && !in_array($status, $allowedStatuses, true)) {
+            throw new \InvalidArgumentException(sprintf('Invalid status "%s". Allowed values: %s', $status, implode(', ', $allowedStatuses)));
+        }
+
         $this->status = $status;
 
         return $this;
     }
 
-    public function setSentAt(?string $sentAt): self
+    public function setSentAt(?\DateTime $sentAt): self
     {
         $this->sentAt = $sentAt;
 
         return $this;
     }
 
-    public function setCreatedAt(?string $createdAt): self
+    public function setCreatedAt(\DateTime $createdAt): void
     {
         $this->createdAt = $createdAt;
-
-        return $this;
     }
 
-    public function setUpdatedAt(?string $updatedAt): self
+    public function setUpdatedAt(\DateTime $updatedAt): void
     {
         $this->updatedAt = $updatedAt;
-
-        return $this;
     }
 }

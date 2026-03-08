@@ -70,7 +70,7 @@ class Admin extends \Api_Abstract
         }
 
         if (isset($data['filter'])) {
-            $message->setFilterFromArray($data['filter']);
+            $message->setFilter($data['filter']);
         }
 
         if (isset($data['from_name'])) {
@@ -84,8 +84,6 @@ class Admin extends \Api_Abstract
             $this->di['tools']->validateAndSanitizeEmail($data['from_email']);
             $message->setFromEmail($data['from_email']);
         }
-
-        $message->setUpdatedAt(date('Y-m-d H:i:s'));
 
         $this->di['em']->persist($message);
         $this->di['em']->flush();
@@ -126,16 +124,12 @@ Order our services at {{ "order"|link }}
         $systemService = $this->di['mod_service']('system');
         $company = $systemService->getCompany();
 
-        $now = date('Y-m-d H:i:s');
-
         $message = new MassmailerMessage();
         $message->setFromEmail($company['email'])
             ->setFromName($company['name'])
             ->setSubject($data['subject'])
             ->setContent($data['content'] ?? $default_content)
-            ->setStatus(MassmailerMessage::STATUS_DRAFT)
-            ->setCreatedAt($now)
-            ->setUpdatedAt($now);
+            ->setStatus(MassmailerMessage::STATUS_DRAFT);
 
         $this->di['em']->persist($message);
         $this->di['em']->flush();
@@ -183,7 +177,7 @@ Order our services at {{ "order"|link }}
         }
 
         $message->setStatus(MassmailerMessage::STATUS_SENT)
-            ->setSentAt(date('Y-m-d H:i:s'));
+            ->setSentAt(new \DateTime());
 
         $this->di['em']->persist($message);
         $this->di['em']->flush();
@@ -203,17 +197,13 @@ Order our services at {{ "order"|link }}
     {
         $message = $this->_getMessage($data);
 
-        $now = date('Y-m-d H:i:s');
-
         $copy = new MassmailerMessage();
         $copy->setFromEmail($message->getFromEmail())
             ->setFromName($message->getFromName())
             ->setSubject($message->getSubject() . ' (Copy)')
             ->setContent($message->getContent())
             ->setFilter($message->getFilter())
-            ->setStatus(MassmailerMessage::STATUS_DRAFT)
-            ->setCreatedAt($now)
-            ->setUpdatedAt($now);
+            ->setStatus(MassmailerMessage::STATUS_DRAFT);
 
         $this->di['em']->persist($copy);
         $this->di['em']->flush();

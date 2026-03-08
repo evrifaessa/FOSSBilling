@@ -673,27 +673,6 @@ CREATE TABLE `mod_email_queue` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
--- Table structure for table `mod_massmailer`
---
-
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!40101 SET character_set_client = utf8 */;
-CREATE TABLE `mod_massmailer` (
-  `id` bigint(20) NOT NULL AUTO_INCREMENT,
-  `from_email` varchar(255) DEFAULT NULL,
-  `from_name` varchar(255) DEFAULT NULL,
-  `subject` varchar(255) DEFAULT NULL,
-  `content` text,
-  `filter` text,
-  `status` varchar(255) DEFAULT NULL,
-  `sent_at` datetime DEFAULT NULL,
-  `created_at` datetime DEFAULT NULL,
-  `updated_at` datetime DEFAULT NULL,
-  PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8;
-/*!40101 SET character_set_client = @saved_cs_client */;
-
---
 -- Table structure for table `pay_gateway`
 --
 

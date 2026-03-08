@@ -632,6 +632,21 @@ class UpdatePatcher implements InjectionAwareInterface
                 $q = "UPDATE setting SET value = 'themes/huraga/assets/build/favicon.ico' WHERE param = 'company_favicon' AND value = 'themes/huraga/assets/favicon.ico';";
                 $this->executeSql($q);
             },
+            50 => function (): void {
+                // Migrate mod_massmailer columns for Doctrine ORM migration:
+                // - Convert varchar(35) timestamp columns to DATETIME
+                // - Convert TEXT filter column to JSON
+                // Only runs if the table exists (Massmailer is an optional module).
+                $schemaManager = $this->di['dbal']->createSchemaManager();
+                if (!$schemaManager->tablesExist(['mod_massmailer'])) {
+                    return;
+                }
+
+                $this->executeSql('ALTER TABLE `mod_massmailer` MODIFY `sent_at` DATETIME NULL DEFAULT NULL');
+                $this->executeSql('ALTER TABLE `mod_massmailer` MODIFY `created_at` DATETIME NULL DEFAULT NULL');
+                $this->executeSql('ALTER TABLE `mod_massmailer` MODIFY `updated_at` DATETIME NULL DEFAULT NULL');
+                $this->executeSql('ALTER TABLE `mod_massmailer` MODIFY `filter` JSON NULL DEFAULT NULL');
+            },
         ];
         ksort($patches, SORT_NATURAL);
 

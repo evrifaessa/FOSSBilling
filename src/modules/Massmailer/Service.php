@@ -14,6 +14,7 @@ namespace Box\Mod\Massmailer;
 
 use Box\Mod\Massmailer\Entity\MassmailerMessage;
 use Box\Mod\Massmailer\Repository\MassmailerMessageRepository;
+use Doctrine\DBAL\ArrayParameterType;
 use FOSSBilling\Environment;
 
 class Service implements \FOSSBilling\InjectionAwareInterface
@@ -56,15 +57,15 @@ class Service implements \FOSSBilling\InjectionAwareInterface
         `from_name` varchar(255) DEFAULT NULL,
         `subject` varchar(255) DEFAULT NULL,
         `content` text DEFAULT NULL,
-        `filter` text DEFAULT NULL,
+        `filter` JSON DEFAULT NULL,
         `status` varchar(255) DEFAULT NULL,
-        `sent_at` varchar(35) DEFAULT NULL,
-        `created_at` varchar(35) DEFAULT NULL,
-        `updated_at` varchar(35) DEFAULT NULL,
+        `sent_at` datetime DEFAULT NULL,
+        `created_at` datetime DEFAULT NULL,
+        `updated_at` datetime DEFAULT NULL,
         PRIMARY KEY (`id`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8 AUTO_INCREMENT=1;
         ';
-        $this->di['db']->exec($sql);
+        $this->di['dbal']->executeStatement($sql);
 
         // default config values
         $extensionService->setConfig(['ext' => 'mod_massmailer', 'limit' => '2', 'interval' => '10', 'test_client_id' => 1]);
@@ -77,36 +78,47 @@ class Service implements \FOSSBilling\InjectionAwareInterface
      */
     public function getMessageReceivers(MassmailerMessage $message, array $data = []): array
     {
-        $filter = $message->getFilterDecoded();
+        $filter = $message->getFilter() ?? [];
+
+        $conn = $this->di['em']->getConnection();
 
         $sql = 'SELECT DISTINCT c.id
             FROM client c
             LEFT JOIN client_order co ON (co.client_id = c.id)
-            WHERE 1
-        ';
+            WHERE 1';
 
-        $values = [];
+        $params = [];
+        $types = [];
+
         if (!empty($filter)) {
-            if (isset($filter['client_status']) && !empty($filter['client_status'])) {
-                $sql .= sprintf(" AND c.status IN ('%s')", implode("', '", $filter['client_status']));
+            if (!empty($filter['client_status'])) {
+                $sql .= ' AND c.status IN (:client_status)';
+                $params['client_status'] = $filter['client_status'];
+                $types['client_status'] = ArrayParameterType::STRING;
             }
 
-            if (isset($filter['client_groups']) && !empty($filter['client_groups'])) {
-                $sql .= sprintf(" AND c.client_group_id IN ('%s')", implode("', '", $filter['client_groups']));
+            if (!empty($filter['client_groups'])) {
+                $sql .= ' AND c.client_group_id IN (:client_groups)';
+                $params['client_groups'] = $filter['client_groups'];
+                $types['client_groups'] = ArrayParameterType::STRING;
             }
 
-            if (isset($filter['has_order']) && !empty($filter['has_order'])) {
-                $sql .= sprintf(" AND co.product_id IN ('%s')", implode("', '", $filter['has_order']));
+            if (!empty($filter['has_order'])) {
+                $sql .= ' AND co.product_id IN (:has_order)';
+                $params['has_order'] = $filter['has_order'];
+                $types['has_order'] = ArrayParameterType::STRING;
             }
 
-            if (isset($filter['has_order_with_status']) && !empty($filter['has_order_with_status'])) {
-                $sql .= sprintf(" AND co.status IN ('%s')", implode("', '", $filter['has_order_with_status']));
+            if (!empty($filter['has_order_with_status'])) {
+                $sql .= ' AND co.status IN (:has_order_with_status)';
+                $params['has_order_with_status'] = $filter['has_order_with_status'];
+                $types['has_order_with_status'] = ArrayParameterType::STRING;
             }
         }
 
         $sql .= ' ORDER BY c.id DESC';
 
-        return $this->di['db']->getAll($sql, $values);
+        return $conn->fetchAllAssociative($sql, $params, $types);
     }
 
     /**
