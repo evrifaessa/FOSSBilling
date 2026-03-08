@@ -1,5 +1,6 @@
 <?php
 
+declare(strict_types=1);
 /**
  * Copyright 2022-2025 FOSSBilling
  * Copyright 2011-2021 BoxBilling, Inc.
@@ -11,6 +12,7 @@
 
 namespace Box\Mod\Massmailer\Api;
 
+use Box\Mod\Massmailer\Entity\MassmailerMessage;
 use FOSSBilling\Validation\Api\RequiredParams;
 
 class Admin extends \Api_Abstract
@@ -20,31 +22,24 @@ class Admin extends \Api_Abstract
      *
      * @optional string $status - filter list by status
      * @optional string $search - search query to search for mail messages
-     *
-     * @return array
      */
-    public function get_list($data)
+    public function get_list(array $data): array
     {
-        [$sql, $params] = $this->getService()->getSearchQuery($data);
-        $per_page = $data['per_page'] ?? $this->di['pager']->getDefaultPerPage();
-        $pager = $this->di['pager']->getPaginatedResultSet($sql, $params, $per_page);
-        foreach ($pager['list'] as $key => $item) {
-            $pager['list'][$key] = $this->getService()->toApiArray($item);
-        }
+        $repo = $this->getService()->getMessageRepository();
+        $qb = $repo->getSearchQueryBuilder($data);
 
-        return $pager;
+        return $this->di['pager']->paginateDoctrineQuery($qb);
     }
 
     /**
      * Get mail message by id.
-     *
-     * @return array
      */
-    public function get($data)
+    #[RequiredParams(['id' => 'Message ID was not passed'])]
+    public function get(array $data): array
     {
-        $model = $this->_getMessage($data);
+        $message = $this->_getMessage($data);
 
-        return $this->getService()->toApiArray($model);
+        return $message->toApiArray();
     }
 
     /**
@@ -57,34 +52,45 @@ class Admin extends \Api_Abstract
      * @optional string $from_email - mail message email from email
      * @optional array $filter  - filter parameters to select clients
      */
-    public function update($data): bool
+    #[RequiredParams(['id' => 'Message ID was not passed'])]
+    public function update(array $data): bool
     {
-        $model = $this->_getMessage($data);
+        $message = $this->_getMessage($data);
 
-        $model->content = $data['content'] ?? $model->content;
-        $model->subject = $data['subject'] ?? $model->subject;
-        $model->status = $data['status'] ?? $model->status;
+        if (isset($data['content'])) {
+            $message->setContent($data['content']);
+        }
+
+        if (isset($data['subject'])) {
+            $message->setSubject($data['subject']);
+        }
+
+        if (isset($data['status'])) {
+            $message->setStatus($data['status']);
+        }
+
         if (isset($data['filter'])) {
-            $model->filter = json_encode($data['filter']);
+            $message->setFilterFromArray($data['filter']);
         }
 
         if (isset($data['from_name'])) {
             if (empty($data['from_name'])) {
                 throw new \FOSSBilling\InformationException('Message from name cannot be empty');
             }
-            $model->from_name = $data['from_name'];
+            $message->setFromName($data['from_name']);
         }
 
         if (isset($data['from_email'])) {
             $this->di['tools']->validateAndSanitizeEmail($data['from_email']);
-            $this->di['tools']->generatePassword(32);
-            $model->from_email = $data['from_email'];
+            $message->setFromEmail($data['from_email']);
         }
 
-        $model->updated_at = date('Y-m-d H:i:s');
-        $this->di['db']->store($model);
+        $message->setUpdatedAt(date('Y-m-d H:i:s'));
 
-        $this->di['logger']->info('Updated mail message #%s', $model->id);
+        $this->di['em']->persist($message);
+        $this->di['em']->flush();
+
+        $this->di['logger']->info('Updated mail message #%s', $message->getId());
 
         return true;
     }
@@ -94,10 +100,10 @@ class Admin extends \Api_Abstract
      *
      * @optional string $content - mail message content
      *
-     * @return bool
+     * @return int New message ID
      */
     #[RequiredParams(['subject' => 'Message subject was not passed'])]
-    public function create($data)
+    public function create(array $data): int
     {
         $default_content = '{% apply markdown %}
 Hi {{ c.first_name }} {{ c.last_name }},
@@ -120,38 +126,41 @@ Order our services at {{ "order"|link }}
         $systemService = $this->di['mod_service']('system');
         $company = $systemService->getCompany();
 
-        $model = $this->di['db']->dispense('mod_massmailer');
-        $model->from_email = $company['email'];
-        $model->from_name = $company['name'];
-        $model->subject = $data['subject'];
-        $model->content = $data['content'] ?? $default_content;
-        $model->status = 'draft';
-        $model->created_at = date('Y-m-d H:i:s');
-        $model->updated_at = date('Y-m-d H:i:s');
+        $now = date('Y-m-d H:i:s');
 
-        $id = $this->di['db']->store($model);
+        $message = new MassmailerMessage();
+        $message->setFromEmail($company['email'])
+            ->setFromName($company['name'])
+            ->setSubject($data['subject'])
+            ->setContent($data['content'] ?? $default_content)
+            ->setStatus(MassmailerMessage::STATUS_DRAFT)
+            ->setCreatedAt($now)
+            ->setUpdatedAt($now);
 
-        $this->di['logger']->info('Created mail message #%s', $model->id);
+        $this->di['em']->persist($message);
+        $this->di['em']->flush();
 
-        return $id;
+        $this->di['logger']->info('Created mail message #%s', $message->getId());
+
+        return $message->getId();
     }
 
     /**
      * Send test mail message by ID to client.
      */
-    public function send_test($data): bool
+    #[RequiredParams(['id' => 'Message ID was not passed'])]
+    public function send_test(array $data): bool
     {
-        /** @var \Model_MassmailerMessage $model */
-        $model = $this->_getMessage($data);
+        $message = $this->_getMessage($data);
         $client_id = $this->_getTestClientId();
 
-        if (empty($model->content)) {
+        if (empty($message->getContent())) {
             throw new \FOSSBilling\InformationException('Add some content before sending message');
         }
 
-        $this->getService()->sendMessage($model, $client_id, true);
+        $this->getService()->sendMessage($message, $client_id, true);
 
-        $this->di['logger']->info('Sent test mail message #%s to client ', $model->id);
+        $this->di['logger']->info('Sent test mail message #%s to client ', $message->getId());
 
         return true;
     }
@@ -159,25 +168,27 @@ Order our services at {{ "order"|link }}
     /**
      * Send mail message by ID.
      */
-    public function send($data): bool
+    #[RequiredParams(['id' => 'Message ID was not passed'])]
+    public function send(array $data): bool
     {
-        /** @var \Model_MassmailerMessage $model */
-        $model = $this->_getMessage($data);
+        $message = $this->_getMessage($data);
 
-        if (empty($model->content)) {
+        if (empty($message->getContent())) {
             throw new \FOSSBilling\InformationException('Add some content before sending message');
         }
 
-        $clients = $this->getService()->getMessageReceivers($model, $data);
+        $clients = $this->getService()->getMessageReceivers($message, $data);
         foreach ($clients as $c) {
-            $this->getService()->sendMessage($model, $c['id']);
+            $this->getService()->sendMessage($message, $c['id']);
         }
 
-        $model->status = 'sent';
-        $model->sent_at = date('Y-m-d H:i:s');
-        $id = $this->di['db']->store($model);
+        $message->setStatus(MassmailerMessage::STATUS_SENT)
+            ->setSentAt(date('Y-m-d H:i:s'));
 
-        $this->di['logger']->info('Added mass mail messages #%s to queue', $id);
+        $this->di['em']->persist($message);
+        $this->di['em']->flush();
+
+        $this->di['logger']->info('Added mass mail messages #%s to queue', $message->getId());
 
         return true;
     }
@@ -185,50 +196,55 @@ Order our services at {{ "order"|link }}
     /**
      * Copy mail message by ID.
      *
-     * @return bool
+     * @return int New message ID
      */
-    public function copy($data)
+    #[RequiredParams(['id' => 'Message ID was not passed'])]
+    public function copy(array $data): int
     {
-        $model = $this->_getMessage($data);
+        $message = $this->_getMessage($data);
 
-        $copy = $this->di['db']->dispense('mod_massmailer');
-        $copy->from_email = $model->from_email;
-        $copy->from_name = $model->from_name;
-        $copy->subject = $model->subject . ' (Copy)';
-        $copy->content = $model->content;
-        $copy->filter = $model->filter;
-        $copy->status = 'draft';
-        $copy->created_at = date('Y-m-d H:i:s');
-        $copy->updated_at = date('Y-m-d H:i:s');
+        $now = date('Y-m-d H:i:s');
 
-        $copyId = $this->di['db']->store($copy);
+        $copy = new MassmailerMessage();
+        $copy->setFromEmail($message->getFromEmail())
+            ->setFromName($message->getFromName())
+            ->setSubject($message->getSubject() . ' (Copy)')
+            ->setContent($message->getContent())
+            ->setFilter($message->getFilter())
+            ->setStatus(MassmailerMessage::STATUS_DRAFT)
+            ->setCreatedAt($now)
+            ->setUpdatedAt($now);
 
-        $this->di['logger']->info('Copied mail message #%s to #%s', $model->id, $copyId);
+        $this->di['em']->persist($copy);
+        $this->di['em']->flush();
 
-        return $copyId;
+        $this->di['logger']->info('Copied mail message #%s to #%s', $message->getId(), $copy->getId());
+
+        return $copy->getId();
     }
 
     /**
      * Get message receivers list.
-     *
-     * @return array
      */
-    public function receivers($data)
+    #[RequiredParams(['id' => 'Message ID was not passed'])]
+    public function receivers(array $data): array
     {
-        $model = $this->_getMessage($data);
+        $message = $this->_getMessage($data);
 
-        return $this->getService()->getMessageReceivers($model, $data);
+        return $this->getService()->getMessageReceivers($message, $data);
     }
 
     /**
      * Delete mail message by ID.
      */
-    public function delete($data): bool
+    #[RequiredParams(['id' => 'Message ID was not passed'])]
+    public function delete(array $data): bool
     {
-        $model = $this->_getMessage($data);
-        $id = $model->id;
+        $message = $this->_getMessage($data);
+        $id = $message->getId();
 
-        $this->di['db']->trash($model);
+        $this->di['em']->remove($message);
+        $this->di['em']->flush();
 
         $this->di['logger']->info('Removed mail message #%s', $id);
 
@@ -240,15 +256,16 @@ Order our services at {{ "order"|link }}
      *
      * @return array - parsed subject and content strings
      */
-    public function preview($data): array
+    #[RequiredParams(['id' => 'Message ID was not passed'])]
+    public function preview(array $data): array
     {
-        $model = $this->_getMessage($data);
+        $message = $this->_getMessage($data);
         $client_id = $this->_getTestClientId();
-        [$ps, $pc] = $this->getService()->getParsed($model, $client_id);
+        [$ps, $pc] = $this->getService()->getParsed($message, $client_id);
 
         $recipients = [];
         $getRecipients = $data['include_recipients'] ?? false;
-        $clients = $this->getService()->getMessageReceivers($model, $data);
+        $clients = $this->getService()->getMessageReceivers($message, $data);
 
         if ($getRecipients) {
             $clientService = $this->di['mod_service']('client');
@@ -296,8 +313,15 @@ Order our services at {{ "order"|link }}
     }
 
     #[RequiredParams(['id' => 'Message ID was not passed'])]
-    private function _getMessage($data)
+    private function _getMessage(array $data): MassmailerMessage
     {
-        return $this->di['db']->getExistingModelById('mod_massmailer', $data['id'], 'Message not found');
+        $repo = $this->getService()->getMessageRepository();
+        $message = $repo->find($data['id']);
+
+        if (!$message instanceof MassmailerMessage) {
+            throw new \FOSSBilling\Exception('Message not found');
+        }
+
+        return $message;
     }
 }

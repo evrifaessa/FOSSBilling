@@ -1,5 +1,6 @@
 <?php
 
+declare(strict_types=1);
 /**
  * Copyright 2022-2025 FOSSBilling
  * Copyright 2011-2021 BoxBilling, Inc.
@@ -11,20 +12,37 @@
 
 namespace Box\Mod\Massmailer;
 
+use Box\Mod\Massmailer\Entity\MassmailerMessage;
+use Box\Mod\Massmailer\Repository\MassmailerMessageRepository;
 use FOSSBilling\Environment;
 
 class Service implements \FOSSBilling\InjectionAwareInterface
 {
     protected ?\Pimple\Container $di = null;
+    protected ?MassmailerMessageRepository $messageRepository = null;
 
     public function setDi(\Pimple\Container $di): void
     {
         $this->di = $di;
+        $this->messageRepository = $this->di['em']->getRepository(MassmailerMessage::class);
     }
 
     public function getDi(): ?\Pimple\Container
     {
         return $this->di;
+    }
+
+    public function getMessageRepository(): MassmailerMessageRepository
+    {
+        if ($this->messageRepository === null) {
+            if ($this->di === null) {
+                throw new \FOSSBilling\Exception('The dependency injection container has not been set.');
+            }
+
+            $this->messageRepository = $this->di['em']->getRepository(MassmailerMessage::class);
+        }
+
+        return $this->messageRepository;
     }
 
     public function install(): void
@@ -52,36 +70,14 @@ class Service implements \FOSSBilling\InjectionAwareInterface
         $extensionService->setConfig(['ext' => 'mod_massmailer', 'limit' => '2', 'interval' => '10', 'test_client_id' => 1]);
     }
 
-    public function getSearchQuery($data): array
+    /**
+     * Get filtered list of client IDs that should receive a mass mail message.
+     *
+     * @return array List of associative arrays with 'id' keys
+     */
+    public function getMessageReceivers(MassmailerMessage $message, array $data = []): array
     {
-        $sql = 'SELECT *
-            FROM mod_massmailer
-            WHERE 1 ';
-
-        $params = [];
-
-        $search = (isset($data['search']) && !empty($data['search'])) ? $data['search'] : null;
-        $status = $data['status'] ?? null;
-
-        if ($status !== null) {
-            $sql .= ' AND status = :status';
-            $params[':status'] = $status;
-        }
-
-        if ($search !== null) {
-            $sql .= ' AND (subject LIKE :search OR content LIKE :search OR from_email LIKE :search OR from_name LIKE :search)';
-            $params[':search'] = '%' . $search . '%';
-        }
-
-        $sql .= ' ORDER BY created_at DESC';
-
-        return [$sql, $params];
-    }
-
-    public function getMessageReceivers($model, $data = [])
-    {
-        $row = $this->toApiArray($model);
-        $filter = $row['filter'];
+        $filter = $message->getFilterDecoded();
 
         $sql = 'SELECT DISTINCT c.id
             FROM client c
@@ -113,7 +109,12 @@ class Service implements \FOSSBilling\InjectionAwareInterface
         return $this->di['db']->getAll($sql, $values);
     }
 
-    public function getParsed($model, $client_id): array
+    /**
+     * Parse the subject and content of a mass mail message for a specific client.
+     *
+     * @return array [parsed_subject, parsed_content]
+     */
+    public function getParsed(MassmailerMessage $message, int $client_id): array
     {
         $clientService = $this->di['mod_service']('client');
         $systemService = $this->di['mod_service']('system');
@@ -123,20 +124,23 @@ class Service implements \FOSSBilling\InjectionAwareInterface
 
         $vars = [];
         $vars['c'] = $clientArr;
-        $vars['_tpl'] = $model->subject;
+        $vars['_tpl'] = $message->getSubject();
         $ps = $systemService->renderString($vars['_tpl'], false, $vars);
 
         $vars = [];
         $vars['c'] = $clientArr;
-        $vars['_tpl'] = $model->content;
+        $vars['_tpl'] = $message->getContent();
         $pc = $systemService->renderString($vars['_tpl'], false, $vars);
 
         return [$ps, $pc];
     }
 
-    public function sendMessage($model, $client_id, bool $sendNow = false): bool
+    /**
+     * Send a mass mail message to a specific client.
+     */
+    public function sendMessage(MassmailerMessage $message, int $client_id, bool $sendNow = false): bool
     {
-        [$ps, $pc] = $this->getParsed($model, $client_id);
+        [$ps, $pc] = $this->getParsed($message, $client_id);
 
         $clientService = $this->di['mod_service']('client');
 
@@ -145,8 +149,8 @@ class Service implements \FOSSBilling\InjectionAwareInterface
         $data = [
             'to' => $client->email,
             'to_name' => $client->first_name . ' ' . $client->last_name,
-            'from' => $model->from_email,
-            'from_name' => $model->from_name,
+            'from' => $message->getFromEmail(),
+            'from_name' => $message->getFromName(),
             'subject' => $ps,
             'content' => $pc,
             'client_id' => $client_id,
@@ -171,23 +175,15 @@ class Service implements \FOSSBilling\InjectionAwareInterface
         return true;
     }
 
-    public function toApiArray($row)
+    /**
+     * Send a mail message by params (used by cron/queue).
+     */
+    public function sendMail(array $params): void
     {
-        if ($row instanceof \RedBeanPHP\OODBBean) {
-            $row = $row->export();
-        }
-
-        $row['filter'] = json_decode($row['filter'] ?? '', true) ?? [];
-
-        return $row;
-    }
-
-    public function sendMail($params): void
-    {
-        $model = $this->di['db']->load('mod_massmailer', $params['msg_id']);
-        if (!$model) {
+        $message = $this->getMessageRepository()->find($params['msg_id']);
+        if (!$message instanceof MassmailerMessage) {
             throw new \Exception('Mass mail message not found');
         }
-        $this->sendMessage($model, $params['client_id']);
+        $this->sendMessage($message, $params['client_id']);
     }
 }
